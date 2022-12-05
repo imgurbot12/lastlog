@@ -1,6 +1,13 @@
 [package]
 name = "lastlog"
 version = "0.1.0"
+authors = ["Andrew Scott <imgurbot12@gmail.com>"]
+description = "Simple rust crate to read linux lastlog"
+repository = "https://github.com/imgurbot12/lastlog"
+readme = "README.md"
+categories = ["os", "parser-implementations"]
+keywords = ["lastlog", "log", "linux", "login"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
