@@ -1,13 +1,9 @@
 # lastlog
 
-A simple user crate designed to read `/var/log/lastlog`
-for retrieving last-login records on linux systems
-
----
+Simple crate for retrieving latest last-login records on a UNIX system
 
 The basic usage looks like:
-
-```rust
+```rust,no_run
 use lastlog::{search_uid, search_username};
 
 fn main() {
@@ -16,6 +12,7 @@ fn main() {
 }
 ```
 
-NOTE: this functionality will ONLY work on **UNIX** operating
-systems that support the `/var/log/lastlog` database
+NOTE: this functionality is only designed to work with UNIX systems
+that support either utmp/wtmp of lastlog database types.
+
 
