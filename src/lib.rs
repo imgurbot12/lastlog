@@ -14,7 +14,7 @@
  ```
 
  NOTE: this functionality is only designed to work with UNIX systems
- that support either utmp/wtmp of lastlog database types.
+ that support either utmp/wtmp or lastlog database types.
 
 */
 use std::env;
@@ -67,7 +67,7 @@ fn get_module() -> Result<(Box<dyn Module>, String)> {
     ))
 }
 
-/// Use the best module to iterate logins for every existing user account
+/// Use an auto-selected module to iterate logins for every user account
 ///
 /// This will attempt to find the most relevant database file located on
 /// your filesystem and parse it to retrieve the login-records for every
@@ -88,7 +88,7 @@ pub fn iter_accounts() -> Result<Vec<Record>> {
     module.iter_accounts(&path)
 }
 
-/// Use the best module to find the last login for the specified user-id
+/// Use an auto-selected module to find the last login for a specified user-id
 ///
 /// This will parse through the most relevant database file only until
 /// the the given user-id's most recent login is found.
@@ -105,7 +105,7 @@ pub fn search_uid(uid: u32) -> Result<Record> {
     module.search_uid(uid, &path)
 }
 
-/// Use the best module to find the last login for the specified username
+/// Use an auto-selected module to find the last login for a specified username
 ///
 /// Similar to `search_uid`, this will only parse the most relevant database
 /// file until the given username's most recent login is found.

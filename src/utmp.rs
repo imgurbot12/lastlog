@@ -6,8 +6,6 @@ use std::collections::HashMap;
 use std::fs::{metadata, File};
 use std::io::{Error, ErrorKind, Read, Result};
 
-use cached::proc_macro::cached;
-
 use super::common::*;
 
 /* Variables */
@@ -119,6 +117,18 @@ where
 
 /* Implementation */
 
+/// UTMP/WTMP Database Reader Implementation
+///
+/// This module allows for reading the [utmp](https://linux.die.net/man/5/utmp)
+/// database format.
+///
+/// # Examples
+///
+/// Basic Usage:
+/// ```
+/// let utmp   = Utmp {};
+/// let record = utmp.search_uid(1000, "/var/log/wtmp");
+/// ```
 pub struct Utmp {}
 
 impl Module for Utmp {

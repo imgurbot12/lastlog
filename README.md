@@ -13,6 +13,6 @@ fn main() {
 ```
 
 NOTE: this functionality is only designed to work with UNIX systems
-that support either utmp/wtmp of lastlog database types.
+that support either utmp/wtmp or lastlog database types.
 
 

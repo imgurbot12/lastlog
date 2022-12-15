@@ -23,6 +23,7 @@ pub struct User {
     pub name: String,
 }
 
+/// Simple Enum for declaring last login-time
 #[derive(Debug)]
 pub enum LoginTime {
     NeverLoggedIn,

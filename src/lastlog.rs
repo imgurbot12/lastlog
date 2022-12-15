@@ -42,6 +42,18 @@ fn read_lastlog(f: &mut File, name: &str, uid: usize) -> Result<Record> {
 
 /* Implementation */
 
+/// Lastlog Database Reader Implementation
+///
+/// This module allows for reading the [lastlog](https://linux.die.net/man/8/lastlog)
+/// database format.
+///
+/// # Examples
+///
+/// Basic Usage:
+/// ```
+/// let llog   = LastLog {};
+/// let record = llog.search_uid(1000, "/var/log/lastlog");
+/// ```
 pub struct LastLog {}
 
 impl Module for LastLog {
