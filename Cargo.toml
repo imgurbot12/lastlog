@@ -8,7 +8,7 @@ readme = "README.md"
 categories = ["os", "parser-implementations"]
 keywords = ["lastlog", "utmp", "linux", "login"]
 license = "MIT"
-edition = "2022"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
