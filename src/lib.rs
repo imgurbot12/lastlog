@@ -1,8 +1,6 @@
 /*!
 
- A simple user crate designed to read `/var/log/lastlog`
- for retrieving last-login records on linux systems
-
+ Simple crate for retrieving latest last-login records on a UNIX system
  ---
 
  The basic usage looks like:
@@ -15,122 +13,65 @@
  }
  ```
 
- NOTE: this functionality will ONLY work on **UNIX** operating
- systems that support the `/var/log/lastlog` database
+ NOTE: this functionality is only designed to work with UNIX systems
+ that support either utmp/wtmp of lastlog database types.
 
 */
-use std::collections::HashMap;
+use std::env;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
-use std::slice;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::io::{Error, ErrorKind, Result};
 
-use cached::proc_macro::cached;
+mod common;
+mod lastlog;
+mod utmp;
 
-/* Variables */
+pub use common::{LoginTime, Module, Record};
+pub use lastlog::LastLog;
+pub use utmp::Utmp;
 
-static PASSWD: &str = "/etc/passwd";
-static LASTLOG: &str = "/var/log/lastlog";
-static ST_SIZE: usize = std::mem::size_of::<RStruct>();
+/* Varaibles */
 
-/* Types */
-
-#[derive(Debug)]
-pub enum LoginTime {
-    NeverLoggedIn,
-    LoggedIn(SystemTime),
-}
-
-#[derive(Debug)]
-pub struct Record {
-    pub uid: u32,
-    pub tty: String,
-    pub last_login: LoginTime,
-}
-
-#[derive(Debug, Clone)]
-struct User {
-    uid: u32,
-    name: String,
-}
-
-#[repr(C, packed)]
-#[derive(Debug, Copy, Clone)]
-struct RStruct(u32, [u8; 32], [u8; 256]);
+static ENV: &str = "LASTLOG";
 
 /* Functions */
 
 #[inline]
-fn unix_timestamp(ts: u32) -> LoginTime {
-    if ts > 0 {
-        return LoginTime::LoggedIn(UNIX_EPOCH + Duration::from_secs(ts as u64));
-    }
-    LoginTime::NeverLoggedIn
+fn modules() -> Vec<Box<dyn Module>> {
+    vec![Box::new(utmp::Utmp {}), Box::new(lastlog::LastLog {})]
 }
 
-// map rstruct object into public record object
-fn map_record(uid: u32, st: RStruct) -> io::Result<Record> {
-    let tty = std::str::from_utf8(&st.1).map_err(|_| io::ErrorKind::InvalidData)?;
-    Ok(Record {
-        uid,
-        tty: tty.trim_matches('\0').to_owned(),
-        last_login: unix_timestamp(st.0),
-    })
-}
-
-// read serialized C struct into object
-fn read_struct<T, R: Read>(mut read: R) -> io::Result<T> {
-    let num_bytes = ::std::mem::size_of::<T>();
-    unsafe {
-        let mut s = ::std::mem::zeroed();
-        let buffer = slice::from_raw_parts_mut(&mut s as *mut T as *mut u8, num_bytes);
-        match read.read_exact(buffer) {
-            Ok(()) => Ok(s),
-            Err(e) => {
-                ::std::mem::forget(s);
-                Err(e)
+// find best suited module to retrieve lastlog data
+fn get_module() -> Result<(Box<dyn Module>, String)> {
+    // check if os-env path is configured
+    if let Ok(path) = env::var(ENV) {
+        // error if given an invalid env path
+        let Ok(mut f) = File::open(&path) else {
+            return Err(Error::new(ErrorKind::InvalidInput, "invalid env path"));
+        };
+        // check if the given file is valid for each of the supported modules
+        for module in modules().into_iter() {
+            if module.is_valid(&mut f) {
+                return Ok((module, path));
             }
         }
     }
-}
-
-// read lastlog for a given user uid
-fn read_lastlog(f: &mut File, uid: usize) -> io::Result<RStruct> {
-    // seek lastlog db based on uid and read RStruct object size
-    let mut buffer = vec![0; ST_SIZE];
-    f.seek(SeekFrom::Start((uid * ST_SIZE) as u64))?;
-    f.read_exact(&mut buffer)?;
-    // parse value into rstruct bytes
-    read_struct::<RStruct, _>(&buffer[..])
-}
-
-// parse /etc/passwd for users and uids on system
-#[cached]
-fn read_passwd() -> Vec<User> {
-    let f = File::open(&PASSWD).expect("unable to read /etc/passwd");
-    let mut users = vec![];
-    for rline in BufReader::new(f).lines() {
-        let Ok(line) = rline else { continue };
-        if line.trim().len() == 0 {
-            continue;
-        };
-        let mut temp = line.splitn(4, ':');
-        let name = temp.next().expect("Invalid /etc/passwd Entry");
-        temp.next();
-        let raw_uid = temp.next().expect("Invalid /etc/passwd UID");
-        users.push(User {
-            name: name.to_owned(),
-            uid: raw_uid.parse::<u32>().expect("Invalid user UID"),
-        });
+    // iterate modules to attempt to find valid primary-file
+    for module in modules().into_iter() {
+        let Ok(path) = module.primary_file() else { continue };
+        return Ok((module, path.to_owned()));
     }
-    users
+    // error if no modules were found to work
+    Err(Error::new(
+        ErrorKind::NotFound,
+        "no operating lastlog modules found",
+    ))
 }
 
-/// Generate a manifest of logins for all linux user accounts
+/// Use the best module to iterate logins for every existing user account
 ///
-/// This will attempt to read and iterate every user account
-/// found in `/etc/passwd` and retrieve the last login information
-/// from `/var/log/lastlog`
+/// This will attempt to find the most relevant database file located on
+/// your filesystem and parse it to retrieve the login-records for every
+/// user account found in `/etc/passwd`
 ///
 /// # Examples
 ///
@@ -142,22 +83,15 @@ fn read_passwd() -> Vec<User> {
 ///     println!("{:?}", account);
 /// }
 /// ```
-pub fn iter_accounts() -> io::Result<HashMap<String, Record>> {
-    let mut f = File::open(&LASTLOG)?;
-    let mut log = HashMap::new();
-    for user in read_passwd().into_iter() {
-        let rstruct = read_lastlog(&mut f, user.uid as usize)?;
-        let record = map_record(user.uid, rstruct)?;
-        log.insert(user.name, record);
-    }
-    Ok(log)
+pub fn iter_accounts() -> Result<Vec<Record>> {
+    let (module, path) = get_module()?;
+    module.iter_accounts(&path)
 }
 
-/// Get the login record for a single valid linux user-id
+/// Use the best module to find the last login for the specified user-id
 ///
-/// This avoids iterating `/etc/passwd` altogether and simply
-/// does a `/var/log/lastlog` database lookup to retrieve the
-/// last-login information
+/// This will parse through the most relevant database file only until
+/// the the given user-id's most recent login is found.
 ///
 /// # Examples
 ///
@@ -166,17 +100,15 @@ pub fn iter_accounts() -> io::Result<HashMap<String, Record>> {
 /// ```
 /// let record = search_uid(1000);
 /// ```
-pub fn search_uid(uid: u32) -> io::Result<Record> {
-    let mut f = File::open(&LASTLOG)?;
-    let rstruct = read_lastlog(&mut f, uid as usize)?;
-    map_record(uid, rstruct)
+pub fn search_uid(uid: u32) -> Result<Record> {
+    let (module, path) = get_module()?;
+    module.search_uid(uid, &path)
 }
 
-/// Find the username's associated UID and collect the linked login-record
+/// Use the best module to find the last login for the specified username
 ///
-/// This iterates `/etc/passwd` to find the associated user-id and will
-/// raise an error if the account username does not exist. Then it does
-/// a simple database lookup to `/var/log/lastlog` to find the last login
+/// Similar to `search_uid`, this will only parse the most relevant database
+/// file until the given username's most recent login is found.
 ///
 /// # Examples
 ///
@@ -185,12 +117,7 @@ pub fn search_uid(uid: u32) -> io::Result<Record> {
 /// ```
 /// let record = search_username("foo");
 /// ```
-pub fn search_username(name: &str) -> io::Result<Record> {
-    let users = read_passwd().into_iter();
-    let filtered: Vec<_> = users.filter(|u| u.name == name).collect();
-    if filtered.len() != 1 {
-        let err = io::Error::new(io::ErrorKind::NotFound, "No such user");
-        return Err(err);
-    }
-    search_uid(filtered[0].uid)
+pub fn search_username(username: &str) -> Result<Record> {
+    let (module, path) = get_module()?;
+    module.search_username(username, &path)
 }
