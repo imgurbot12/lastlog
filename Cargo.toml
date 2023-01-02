@@ -1,6 +1,6 @@
 [package]
 name = "lastlog"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Andrew Scott <imgurbot12@gmail.com>"]
 description = "Simple rust crate to read linux lastlog"
 repository = "https://github.com/imgurbot12/lastlog"
