@@ -26,8 +26,32 @@ pub struct User {
 /// Simple Enum for declaring last login-time
 #[derive(Debug)]
 pub enum LoginTime {
-    NeverLoggedIn,
-    LoggedIn(SystemTime),
+    Never,
+    Last(SystemTime),
+}
+
+impl From<SystemTime> for LoginTime {
+    fn from(v: SystemTime) -> Self {
+        LoginTime::Last(v)
+    }
+}
+
+impl From<Option<SystemTime>> for LoginTime {
+    fn from(v: Option<SystemTime>) -> Self {
+        match v {
+            None => LoginTime::Never,
+            Some(time) => LoginTime::from(time),
+        }
+    }
+}
+
+impl Into<Option<SystemTime>> for LoginTime {
+    fn into(self) -> Option<SystemTime> {
+        match self {
+            LoginTime::Never => None,
+            LoginTime::Last(time) => Some(time),
+        }
+    }
 }
 
 /// Single Database Record instance for a given user's latest-login information
@@ -58,9 +82,9 @@ pub trait Module {
 #[inline]
 pub fn unix_timestamp(ts: u32) -> LoginTime {
     if ts > 0 {
-        return LoginTime::LoggedIn(UNIX_EPOCH + Duration::from_secs(ts as u64));
+        return LoginTime::Last(UNIX_EPOCH + Duration::from_secs(ts as u64));
     }
-    LoginTime::NeverLoggedIn
+    LoginTime::Never
 }
 
 // read serialized C struct into object
@@ -85,7 +109,7 @@ pub fn new_record(uid: u32, name: String) -> Record {
         uid,
         name,
         tty: "".to_owned(),
-        last_login: LoginTime::NeverLoggedIn,
+        last_login: LoginTime::Never,
     }
 }
 

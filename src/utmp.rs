@@ -58,8 +58,8 @@ fn map_record(umap: &HashMap<String, u32>, st: RStruct) -> Result<Record> {
 // replace hashmap entry if login was newer than current record
 fn set_latest(all: &mut HashMap<u32, Record>, new: Record) {
     if let Some(rec) = all.get(&new.uid) {
-        if let LoginTime::LoggedIn(old) = rec.last_login {
-            if let LoginTime::LoggedIn(new) = new.last_login {
+        if let LoginTime::Last(old) = rec.last_login {
+            if let LoginTime::Last(new) = new.last_login {
                 if old > new {
                     return;
                 }

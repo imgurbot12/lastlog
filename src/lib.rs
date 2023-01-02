@@ -21,6 +21,8 @@ use std::env;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Result};
 
+use libc::getuid;
+
 mod common;
 mod lastlog;
 mod utmp;
@@ -120,4 +122,12 @@ pub fn search_uid(uid: u32) -> Result<Record> {
 pub fn search_username(username: &str) -> Result<Record> {
     let (module, path) = get_module()?;
     module.search_username(username, &path)
+}
+
+/// Use libc to retrieve the current user-id and complete a search
+#[cfg(feature = "libc")]
+pub fn search_self() -> Result<Record> {
+    let (module, path) = get_module()?;
+    let uid = unsafe { getuid() };
+    module.search_uid(uid, &path)
 }
