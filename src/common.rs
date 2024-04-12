@@ -134,11 +134,23 @@ fn read_passwd() -> Vec<User> {
     users
 }
 
+#[cfg(not(feature = "cached"))]
+pub fn read_passwd_nmap() -> HashMap<String, u32> {
+    read_passwd().into_iter().map(|r| (r.name, r.uid)).collect()
+}
+
+#[cfg(not(feature = "cached"))]
+pub fn read_passwd_idmap() -> HashMap<u32, String> {
+    read_passwd().into_iter().map(|r| (r.uid, r.name)).collect()
+}
+
+#[cfg(feature = "cached")]
 #[cached]
 pub fn read_passwd_idmap() -> HashMap<u32, String> {
     read_passwd().into_iter().map(|r| (r.uid, r.name)).collect()
 }
 
+#[cfg(feature = "cached")]
 #[cached]
 pub fn read_passwd_nmap() -> HashMap<String, u32> {
     read_passwd().into_iter().map(|r| (r.name, r.uid)).collect()
