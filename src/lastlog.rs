@@ -22,7 +22,8 @@ struct RStruct(u32, [u8; 32], [u8; 256]);
 fn map_record(name: &str, uid: u32, st: RStruct) -> Result<Record> {
     let tty = std::str::from_utf8(&st.1).map_err(|_| ErrorKind::InvalidData)?;
     Ok(Record {
-        uid,
+        rtype: RecordType::User,
+        uid: Some(uid),
         name: name.to_owned(),
         tty: tty.trim_matches('\0').to_owned(),
         last_login: unix_timestamp(st.0),
@@ -51,12 +52,14 @@ fn read_lastlog(f: &mut File, name: &str, uid: usize) -> Result<Record> {
 ///
 /// Basic Usage:
 /// ```
-/// let llog   = LastLog {};
+/// use lastlog::LoginDB;
+///
+/// let llog   = lastlog::LastLog {};
 /// let record = llog.search_uid(1000, "/var/log/lastlog");
 /// ```
 pub struct LastLog {}
 
-impl Module for LastLog {
+impl LoginDB for LastLog {
     fn is_valid(&self, f: &mut File) -> bool {
         let uid = guess_uid();
         read_lastlog(f, "", uid as usize).is_ok()

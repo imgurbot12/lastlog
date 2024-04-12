@@ -11,7 +11,6 @@ use super::common::*;
 /* Variables */
 
 static ST_SIZE: usize = std::mem::size_of::<RStruct>();
-static USER_PROCESS: i32 = 7;
 
 /* Type */
 
@@ -47,8 +46,11 @@ fn stringify<'a>(name: &str, string: &'a [u8]) -> Result<&'a str> {
 fn map_record(umap: &HashMap<String, u32>, st: RStruct) -> Result<Record> {
     let tty = stringify("tty", &st.line)?;
     let name = stringify("username", &st.user)?;
+    let rtype =
+        RecordType::try_from(st.rtype).map_err(|e| Error::new(ErrorKind::InvalidData, e))?;
     Ok(Record {
-        uid: *umap.get(name).unwrap_or(&0),
+        rtype,
+        uid: umap.get(name).map(|uid| *uid),
         name: name.to_owned(),
         tty: tty.trim_matches('\0').to_owned(),
         last_login: unix_timestamp(st.sec as u32),
@@ -56,8 +58,8 @@ fn map_record(umap: &HashMap<String, u32>, st: RStruct) -> Result<Record> {
 }
 
 // replace hashmap entry if login was newer than current record
-fn set_latest(all: &mut HashMap<u32, Record>, new: Record) {
-    if let Some(rec) = all.get(&new.uid) {
+fn set_latest(all: &mut HashMap<String, Record>, new: Record) {
+    if let Some(rec) = all.get(&new.name) {
         if let LoginTime::Last(old) = rec.last_login {
             if let LoginTime::Last(new) = new.last_login {
                 if old > new {
@@ -66,7 +68,7 @@ fn set_latest(all: &mut HashMap<u32, Record>, new: Record) {
             }
         }
     }
-    all.insert(new.uid, new);
+    all.insert(new.name.to_owned(), new);
 }
 
 // read single entry from utmp file
@@ -94,10 +96,6 @@ where
         seek -= ST_SIZE as u64;
         f.seek(SeekFrom::Start(seek))?;
         let st = read_utmp(&mut f, &mut buffer)?;
-        // skip processing if not a login
-        if st.rtype != USER_PROCESS {
-            continue;
-        }
         // convert into standard record object
         let rec = map_record(&umap, st)?;
         if until(&rec) {
@@ -108,8 +106,8 @@ where
     }
     // assign empty records for accounts that have never logged-in
     for (user, uid) in umap.iter() {
-        if !records.contains_key(&uid) {
-            records.insert(*uid, new_record(*uid, user.to_owned()));
+        if !records.contains_key(user) {
+            records.insert(user.to_owned(), new_record(*uid, user.to_owned()));
         }
     }
     Ok(records.into_values().collect())
@@ -126,12 +124,36 @@ where
 ///
 /// Basic Usage:
 /// ```
-/// let utmp   = Utmp {};
+/// use lastlog::LoginDB;
+///
+/// let utmp   = lastlog::Utmp {};
 /// let record = utmp.search_uid(1000, "/var/log/wtmp");
+/// let all_records = utmp.read_all("/var/run/utmp");
 /// ```
 pub struct Utmp {}
 
-impl Module for Utmp {
+impl Utmp {
+    /// Read all records contained within a Utmp file
+    ///
+    /// This includes process-entries / system-accounts / reboots / etc...
+    ///
+    /// # Examples
+    ///
+    /// Basic Usage:
+    ///
+    /// ```
+    /// use lastlog::LoginDB;
+    ///
+    /// let utmp = lastlog::Utmp {};
+    /// let records = utmp.read_all("/var/run/utmp");
+    /// ```
+    pub fn read_all(&self, fname: &str) -> Result<Vec<Record>> {
+        let users = read_passwd_nmap();
+        read_until(&users, fname, |_| false)
+    }
+}
+
+impl LoginDB for Utmp {
     fn is_valid(&self, f: &mut File) -> bool {
         let mut buffer = vec![0; ST_SIZE];
         read_utmp(f, &mut buffer).is_ok()
@@ -152,10 +174,13 @@ impl Module for Utmp {
 
     // iterate all accounts in /etc/passwd and generate relevant records
     fn iter_accounts(&self, fname: &str) -> Result<Vec<Record>> {
-        let users = read_passwd_nmap();
         let mut results = HashMap::new();
-        let records = read_until(&users, fname, |_| false)?;
-        for rec in records.into_iter() {
+        let records = self.read_all(fname)?;
+        for rec in records
+            .into_iter()
+            .filter(|r| r.rtype == RecordType::User)
+            .filter(|r| r.uid.is_some())
+        {
             results.insert(rec.uid, rec);
         }
         Ok(results.into_values().collect())
@@ -164,9 +189,9 @@ impl Module for Utmp {
     // search for latest login for a given uid
     fn search_uid(&self, uid: u32, fname: &str) -> Result<Record> {
         let users = read_passwd_nmap();
-        let records = read_until(&users, fname, |r| r.uid == uid)?;
+        let records = read_until(&users, fname, |r| r.uid == Some(uid))?;
         for record in records.into_iter() {
-            if record.uid == uid {
+            if record.uid == Some(uid) {
                 return Ok(record);
             }
         }

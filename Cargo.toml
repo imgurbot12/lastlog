@@ -1,6 +1,6 @@
 [package]
 name = "lastlog"
-version = "0.2.4"
+version = "0.3.0"
 authors = ["Andrew Scott <imgurbot12@gmail.com>"]
 description = "Simple rust crate to read linux lastlog"
 repository = "https://github.com/imgurbot12/lastlog"
@@ -17,5 +17,5 @@ libc = ["dep:libc"]
 cached = ["dep:cached"]
 
 [dependencies]
-cached = { version = "0.40.0", option = true }
+cached = { version = "0.40.0", optional = true }
 libc = { version = "0.2.139", optional = true }

@@ -15,7 +15,6 @@
 
  NOTE: this functionality is only designed to work with UNIX systems
  that support either utmp/wtmp or lastlog database types.
-
 */
 use std::env;
 use std::fs::File;
@@ -25,7 +24,7 @@ mod common;
 mod lastlog;
 mod utmp;
 
-pub use common::{LoginTime, Module, Record};
+pub use common::{LoginDB, LoginTime, Record, RecordType};
 pub use lastlog::LastLog;
 pub use utmp::Utmp;
 
@@ -36,12 +35,12 @@ static ENV: &str = "LASTLOG";
 /* Functions */
 
 #[inline]
-fn modules() -> Vec<Box<dyn Module>> {
+fn modules() -> Vec<Box<dyn LoginDB>> {
     vec![Box::new(utmp::Utmp {}), Box::new(lastlog::LastLog {})]
 }
 
 // find best suited module to retrieve lastlog data
-fn get_module() -> Result<(Box<dyn Module>, String)> {
+fn get_module() -> Result<(Box<dyn LoginDB>, String)> {
     // check if os-env path is configured
     if let Ok(path) = env::var(ENV) {
         // error if given an invalid env path
@@ -57,7 +56,9 @@ fn get_module() -> Result<(Box<dyn Module>, String)> {
     }
     // iterate modules to attempt to find valid primary-file
     for module in modules().into_iter() {
-        let Ok(path) = module.primary_file() else { continue };
+        let Ok(path) = module.primary_file() else {
+            continue;
+        };
         return Ok((module, path.to_owned()));
     }
     // error if no modules were found to work
@@ -65,6 +66,29 @@ fn get_module() -> Result<(Box<dyn Module>, String)> {
         ErrorKind::NotFound,
         "no operating lastlog modules found",
     ))
+}
+
+/// Read UTMP records to discover most recent boot-time record
+///
+/// This will search for the most recent `BOOT_TIME` record-type
+/// contained within the utmp database and return the complete
+/// record.
+///
+/// # Examples
+///
+/// Basic Usage:
+///
+/// ```
+/// let boot_record = lastlog::system_boot().unwrap();
+/// println!("boot-time! {:?}", boot_record.last_login);
+/// ```
+pub fn system_boot() -> Result<Record> {
+    let utmp = Utmp {};
+    let path = utmp.primary_file()?;
+    utmp.read_all(path)?
+        .into_iter()
+        .find(|r| r.rtype == RecordType::BootTime)
+        .ok_or(Error::new(ErrorKind::NotFound, "boot record not found"))
 }
 
 /// Use an auto-selected module to iterate logins for every user account
@@ -78,7 +102,7 @@ fn get_module() -> Result<(Box<dyn Module>, String)> {
 /// Basic Usage:
 ///
 /// ```
-/// let accounts = iter_accounts().unwrap()
+/// let accounts = lastlog::iter_accounts().unwrap();
 /// for account in accounts.iter() {
 ///     println!("{:?}", account);
 /// }
@@ -98,7 +122,7 @@ pub fn iter_accounts() -> Result<Vec<Record>> {
 /// Basic Usage:
 ///
 /// ```
-/// let record = search_uid(1000);
+/// let record = lastlog::search_uid(1000);
 /// ```
 pub fn search_uid(uid: u32) -> Result<Record> {
     let (module, path) = get_module()?;
@@ -115,7 +139,7 @@ pub fn search_uid(uid: u32) -> Result<Record> {
 /// Basic Usage:
 ///
 /// ```
-/// let record = search_username("foo");
+/// let record = lastlog::search_username("foo");
 /// ```
 pub fn search_username(username: &str) -> Result<Record> {
     let (module, path) = get_module()?;
@@ -123,6 +147,17 @@ pub fn search_username(username: &str) -> Result<Record> {
 }
 
 /// Use libc to retrieve the current user-id and complete a search
+///
+/// Same as search_uid with but looks up the current user-id
+/// automatically using libc.
+///
+/// # Examples
+///
+/// Basic Usage:
+///
+/// ```
+/// let record = lastlog::search_self();
+/// ```
 #[cfg(feature = "libc")]
 pub fn search_self() -> Result<Record> {
     let (module, path) = get_module()?;

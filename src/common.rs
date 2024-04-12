@@ -1,5 +1,5 @@
 /*
- *
+ * Common Utilities used for Lastlog and Utmp Reading
  */
 use std::collections::HashMap;
 use std::env;
@@ -8,6 +8,7 @@ use std::io::{BufRead, BufReader, Read, Result};
 use std::slice;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[cfg(feature = "cached")]
 use cached::proc_macro::cached;
 
 /* Variables */
@@ -18,13 +19,48 @@ static USER_ENV: &str = "USER";
 /* Types */
 
 #[derive(Debug, Clone)]
-pub struct User {
+struct User {
     pub uid: u32,
     pub name: String,
 }
 
+/// Utmp RecordType
+/// (https://man7.org/linux/man-pages/man5/utmp.5.html)
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecordType {
+    Empty,
+    RunLvl,
+    BootTime,
+    NewTime,
+    OldTime,
+    InitProc,
+    LoginProc,
+    User,
+    DeadProc,
+    Accounting,
+}
+
+impl TryFrom<i32> for RecordType {
+    type Error = String;
+    fn try_from(value: i32) -> std::prelude::v1::Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Empty),
+            1 => Ok(Self::RunLvl),
+            2 => Ok(Self::BootTime),
+            3 => Ok(Self::NewTime),
+            4 => Ok(Self::OldTime),
+            5 => Ok(Self::InitProc),
+            6 => Ok(Self::LoginProc),
+            7 => Ok(Self::User),
+            8 => Ok(Self::DeadProc),
+            9 => Ok(Self::Accounting),
+            _ => Err(format!("Invalid RecordType: {value:?}")),
+        }
+    }
+}
+
 /// Simple Enum for declaring last login-time
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LoginTime {
     Never,
     Last(SystemTime),
@@ -57,7 +93,8 @@ impl Into<Option<SystemTime>> for LoginTime {
 /// Single Database Record instance for a given user's latest-login information
 #[derive(Debug)]
 pub struct Record {
-    pub uid: u32,
+    pub rtype: RecordType,
+    pub uid: Option<u32>,
     pub name: String,
     pub tty: String,
     pub last_login: LoginTime,
@@ -68,7 +105,7 @@ pub struct Record {
 /// This enables lower level control and access to various resources
 /// on the linux filesystem while also enabling the generalized functions
 /// to find the best option amongst the existing implementations
-pub trait Module {
+pub trait LoginDB {
     fn is_valid(&self, f: &mut File) -> bool;
     fn primary_file(&self) -> Result<&'static str>;
     fn iter_accounts(&self, fname: &str) -> Result<Vec<Record>>;
@@ -106,7 +143,8 @@ pub fn read_struct<T, R: Read>(mut read: R) -> Result<T> {
 // generate empty user record for the given uid/name
 pub fn new_record(uid: u32, name: String) -> Record {
     Record {
-        uid,
+        rtype: RecordType::User,
+        uid: Some(uid),
         name,
         tty: "".to_owned(),
         last_login: LoginTime::Never,
