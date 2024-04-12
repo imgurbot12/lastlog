@@ -4,7 +4,7 @@
 */
 use std::collections::HashMap;
 use std::fs::{metadata, File};
-use std::io::{Error, ErrorKind, Read, Result};
+use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 
 use super::common::*;
 
@@ -86,14 +86,14 @@ where
     F: Fn(&Record) -> bool,
 {
     let mut f = File::open(fname)?;
-    let fsize = metadata(fname)?.len() as usize;
-    let mut seek = 0;
+    let mut seek = f.seek(SeekFrom::End(0))?;
     let mut buffer = vec![0; ST_SIZE];
     let mut records = HashMap::new();
-    while seek < fsize {
+    while seek > 0 {
         // read raw struct from buffer and update seek position
+        seek -= ST_SIZE as u64;
+        f.seek(SeekFrom::Start(seek))?;
         let st = read_utmp(&mut f, &mut buffer)?;
-        seek += ST_SIZE;
         // skip processing if not a login
         if st.rtype != USER_PROCESS {
             continue;
@@ -138,7 +138,7 @@ impl Module for Utmp {
     }
 
     fn primary_file(&self) -> Result<&'static str> {
-        for fpath in vec!["/var/log/wtmp", "/var/log/utmp", "/var/run/utmp"].iter() {
+        for fpath in vec!["/var/run/utmp", "/var/log/utmp", "/var/log/wtmp"].iter() {
             let Ok(meta) = metadata(fpath) else { continue };
             if meta.is_file() {
                 return Ok(fpath);
