@@ -1,6 +1,6 @@
 /*!
 
- Simple crate for retrieving latest last-login records on a UNIX system
+ Simple crate for retrieving latest last-login records
  ---
 
  The basic usage looks like:
@@ -12,9 +12,6 @@
     let result2 = search_username("foo");
  }
  ```
-
- NOTE: this functionality is only designed to work with UNIX systems
- that support either utmp/wtmp or lastlog database types.
 */
 use std::env;
 use std::fs::File;
@@ -24,9 +21,15 @@ mod common;
 mod lastlog;
 mod utmp;
 
+#[cfg(target_os = "windows")]
+mod winapi;
+
 pub use common::{LoginDB, LoginTime, Record, RecordType};
 pub use lastlog::LastLog;
 pub use utmp::Utmp;
+
+#[cfg(target_os = "windows")]
+pub use winapi::Windows;
 
 /* Varaibles */
 
@@ -36,7 +39,11 @@ static ENV: &str = "LASTLOG";
 
 #[inline]
 fn modules() -> Vec<Box<dyn LoginDB>> {
-    vec![Box::new(utmp::Utmp {}), Box::new(lastlog::LastLog {})]
+    if cfg!(target_os = "windows") {
+        vec![Box::new(Windows {})]
+    } else {
+        vec![Box::new(Utmp {}), Box::new(LastLog {})]
+    }
 }
 
 // find best suited module to retrieve lastlog data
@@ -146,6 +153,18 @@ pub fn search_username(username: &str) -> Result<Record> {
     module.search_username(username, &path)
 }
 
+#[cfg(feature = "libc")]
+#[inline]
+fn get_uid() {
+    let uid = unsafe { libc::getuid() };
+}
+
+#[cfg(not(feature = "libc"))]
+#[inline]
+fn get_uid() -> u32 {
+    common::guess_uid()
+}
+
 /// Use libc to retrieve the current user-id and complete a search
 ///
 /// Same as search_uid with but looks up the current user-id
@@ -158,9 +177,13 @@ pub fn search_username(username: &str) -> Result<Record> {
 /// ```
 /// let record = lastlog::search_self();
 /// ```
-#[cfg(feature = "libc")]
 pub fn search_self() -> Result<Record> {
     let (module, path) = get_module()?;
-    let uid = unsafe { libc::getuid() };
-    module.search_uid(uid, &path)
+    if cfg!(target_os = "windows") {
+        let username = winapi::get_username()?;
+        module.search_username(&username, &path)
+    } else {
+        let uid = get_uid();
+        module.search_uid(uid, &path)
+    }
 }

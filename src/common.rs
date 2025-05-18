@@ -60,7 +60,7 @@ impl TryFrom<i32> for RecordType {
 }
 
 /// Simple Enum for declaring last login-time
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LoginTime {
     Never,
     Last(SystemTime),
@@ -91,7 +91,7 @@ impl Into<Option<SystemTime>> for LoginTime {
 }
 
 /// Single Database Record instance for a given user's latest-login information
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Record {
     pub rtype: RecordType,
     pub uid: Option<u32>,
