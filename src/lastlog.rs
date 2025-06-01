@@ -1,5 +1,5 @@
 /*
- *  Linux `/var/log/lastlog` db reader
+ * Linux `/var/log/lastlog` db reader
  */
 use std::fs::{metadata, File};
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};

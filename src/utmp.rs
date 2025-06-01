@@ -1,7 +1,6 @@
-/*!
-
-
-*/
+/*
+ * Linux utmp db reader
+ */
 use std::collections::HashMap;
 use std::fs::{metadata, File};
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};

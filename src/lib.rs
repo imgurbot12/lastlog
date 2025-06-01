@@ -18,6 +18,7 @@ use std::fs::File;
 use std::io::{Error, ErrorKind, Result};
 
 mod common;
+mod compat;
 mod lastlog;
 mod utmp;
 
@@ -25,6 +26,7 @@ mod utmp;
 mod winapi;
 
 pub use common::{LoginDB, LoginTime, Record, RecordType};
+use compat::os;
 pub use lastlog::LastLog;
 pub use utmp::Utmp;
 
@@ -37,15 +39,6 @@ static ENV: &str = "LASTLOG";
 
 /* Functions */
 
-#[inline]
-fn modules() -> Vec<Box<dyn LoginDB>> {
-    if cfg!(target_os = "windows") {
-        vec![Box::new(Windows {})]
-    } else {
-        vec![Box::new(Utmp {}), Box::new(LastLog {})]
-    }
-}
-
 // find best suited module to retrieve lastlog data
 fn get_module() -> Result<(Box<dyn LoginDB>, String)> {
     // check if os-env path is configured
@@ -55,14 +48,14 @@ fn get_module() -> Result<(Box<dyn LoginDB>, String)> {
             return Err(Error::new(ErrorKind::InvalidInput, "invalid env path"));
         };
         // check if the given file is valid for each of the supported modules
-        for module in modules().into_iter() {
+        for module in os::modules().into_iter() {
             if module.is_valid(&mut f) {
                 return Ok((module, path));
             }
         }
     }
     // iterate modules to attempt to find valid primary-file
-    for module in modules().into_iter() {
+    for module in os::modules().into_iter() {
         let Ok(path) = module.primary_file() else {
             continue;
         };
@@ -153,18 +146,6 @@ pub fn search_username(username: &str) -> Result<Record> {
     module.search_username(username, &path)
 }
 
-#[cfg(feature = "libc")]
-#[inline]
-fn get_uid() {
-    let uid = unsafe { libc::getuid() };
-}
-
-#[cfg(not(feature = "libc"))]
-#[inline]
-fn get_uid() -> u32 {
-    common::guess_uid()
-}
-
 /// Use libc to retrieve the current user-id and complete a search
 ///
 /// Same as search_uid with but looks up the current user-id
@@ -179,11 +160,5 @@ fn get_uid() -> u32 {
 /// ```
 pub fn search_self() -> Result<Record> {
     let (module, path) = get_module()?;
-    if cfg!(target_os = "windows") {
-        let username = winapi::get_username()?;
-        module.search_username(&username, &path)
-    } else {
-        let uid = get_uid();
-        module.search_uid(uid, &path)
-    }
+    os::search_self(module, path)
 }
