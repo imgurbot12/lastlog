@@ -29,8 +29,8 @@ pub mod os {
 
     #[cfg(feature = "libc")]
     #[inline]
-    fn get_uid() {
-        let uid = unsafe { libc::getuid() };
+    fn get_uid() -> u32 {
+        unsafe { libc::getuid() }
     }
 
     #[cfg(not(feature = "libc"))]
